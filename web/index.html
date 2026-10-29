@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QuantFactorLab · 因子策略实验室</title>
+<link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">QF</div>
+      <div class="brand-text">
+        <div class="brand-name">QuantFactorLab</div>
+        <div class="brand-sub">因子策略实验室 <span class="ver">v0.1</span></div>
+      </div>
+    </div>
+
+    <div class="search-box">
+      <input id="symbol-search" placeholder="输入6位代码添加 / 筛选名称" autocomplete="off" />
+      <button id="btn-add-symbol" title="添加自选">+</button>
+    </div>
+
+    <div class="side-label">自选标的</div>
+    <div class="watchlist" id="watchlist"></div>
+
+    <div class="side-label">运行状态</div>
+    <div class="side-card">
+      <div class="side-row">
+        <span class="dot" id="ws-dot"></span>
+        <span id="ws-state">连接中…</span>
+      </div>
+      <div class="side-row small">
+        <span>数据源</span><b id="side-source">--</b>
+      </div>
+      <div class="side-row small">
+        <span>更新时间</span><b id="side-updated">--</b>
+      </div>
+    </div>
+    <div class="side-card">
+      <div class="side-row">
+        <span class="dot" id="llm-dot"></span>
+        <span id="llm-state">大模型未配置</span>
+      </div>
+      <div class="side-hint">用于因子深度解读与策略代码生成</div>
+      <button class="btn tiny ghost" id="btn-side-llm">配置大模型</button>
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="btn tiny ghost" id="btn-help">使用说明</button>
+      <span class="ver">Win10/11 · 本地运行</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="tabs">
+        <button class="tab active" data-view="dashboard">实时看板</button>
+        <button class="tab" data-view="backtest">策略回测</button>
+        <button class="tab" data-view="library">因子库</button>
+      </div>
+      <div class="top-right">
+        <span class="live-badge" id="live-badge"><span class="pulse"></span><span id="live-text">连接中</span></span>
+        <span class="clock" id="clock">--:--:--</span>
+        <button class="icon-btn" id="btn-refresh" title="重新拉取行情">⟳</button>
+        <button class="icon-btn" id="btn-settings" title="设置">⚙</button>
+      </div>
+    </header>
+
+    <!-- ================= 实时看板 ================= -->
+    <section class="view active" id="view-dashboard">
+      <div class="quote-head panel">
+        <div class="qh-left">
+          <div class="sym-line"><h1 id="q-name">--</h1><span class="sym-code" id="q-code">--</span></div>
+          <div class="tags">
+            <span class="tag" id="q-source">--</span>
+            <span class="tag ghost" id="q-date">--</span>
+            <span class="tag warn hidden" id="q-sim">模拟行情</span>
+          </div>
+        </div>
+        <div class="qh-price">
+          <div class="price" id="q-price">--</div>
+          <div class="chg" id="q-chg">--</div>
+        </div>
+        <div class="qh-stats">
+          <div><label>今开</label><b id="q-open">--</b></div>
+          <div><label>最高</label><b id="q-high">--</b></div>
+          <div><label>最低</label><b id="q-low">--</b></div>
+          <div><label>换手率</label><b id="q-turnover">--</b></div>
+        </div>
+        <div class="qh-signal">
+          <div class="sig-score" id="qh-score">--</div>
+          <div class="sig-label" id="qh-label">--</div>
+          <div class="sig-counts" id="qh-counts">--</div>
+        </div>
+      </div>
+
+      <div class="grid-main">
+        <div class="panel chart-panel">
+          <div class="panel-head">
+            <div class="panel-title">价格走势 <span class="sub">日线 · 前复权</span></div>
+            <div class="seg">
+              <button class="chip active" data-chart="kline">K线 + 均线</button>
+              <button class="chip" data-chart="factor">因子走势对比</button>
+            </div>
+          </div>
+          <div class="chart" id="chart-price"></div>
+          <div class="chart" id="chart-factor-trend" style="display:none"></div>
+          <div class="factor-toggles" id="factor-toggles" style="display:none"></div>
+        </div>
+
+        <div class="panel score-panel">
+          <div class="panel-head">
+            <div class="panel-title">综合多因子评分</div>
+            <span class="sub" id="composite-formula">Σ 评分×权重 / Σ权重</span>
+          </div>
+          <div class="gauge" id="chart-gauge"></div>
+          <div class="score-desc" id="score-desc">正在加载…</div>
+          <div class="counts">
+            <div class="c-item up"><b id="c-bull">0</b><span>偏多因子</span></div>
+            <div class="c-item neutral"><b id="c-neutral">0</b><span>中性因子</span></div>
+            <div class="c-item down"><b id="c-bear">0</b><span>偏空因子</span></div>
+          </div>
+          <div class="radar" id="chart-radar"></div>
+        </div>
+      </div>
+
+      <div class="panel factors-panel">
+        <div class="panel-head">
+          <div class="panel-title">因子实时状态 <span class="sub">共 13 个 · 点击卡片查看含义、作用与状态解读</span></div>
+          <div class="legend">
+            <span class="lg" style="--c:#16c784">强空</span>
+            <span class="lg" style="--c:#4ade80">偏空</span>
+            <span class="lg" style="--c:#94a3b8">中性</span>
+            <span class="lg" style="--c:#fb7185">偏多</span>
+            <span class="lg" style="--c:#f6465d">强多</span>
+          </div>
+        </div>
+        <div class="factor-grid" id="factor-grid"></div>
+      </div>
+    </section>
+
+    <!-- ================= 策略回测 ================= -->
+    <section class="view" id="view-backtest">
+      <div class="bt-layout">
+        <div class="bt-left">
+          <div class="panel bt-form">
+            <div class="panel-head"><div class="panel-title">策略配置</div></div>
+            <label class="field-label">策略模板</label>
+            <select id="bt-strategy" class="input"></select>
+            <div class="strategy-desc" id="strategy-desc"></div>
+            <div id="bt-params" class="params"></div>
+
+            <label class="field-label">回测设置</label>
+            <div class="row3">
+              <div><label class="mini-label">初始资金</label><input id="bt-cash" class="input" type="number" value="100000" /></div>
+              <div><label class="mini-label">手续费率</label><input id="bt-fee" class="input" type="number" step="0.0001" value="0.0003" /></div>
+              <div><label class="mini-label">滑点</label><input id="bt-slip" class="input" type="number" step="0.0001" value="0.0002" /></div>
+            </div>
+            <label class="check"><input type="checkbox" id="bt-short" /> 允许做空（融券/期货逻辑，A股股票不建议）</label>
+
+            <button class="btn primary wide" id="bt-run">运行回测</button>
+            <div class="hint" id="bt-status">信号当日收盘生成，次日开盘成交，双边计费，T+1。</div>
+
+            <div class="divider"></div>
+            <label class="field-label">AI 策略助手 <span class="ai-badge">大模型</span></label>
+            <textarea id="ai-req" class="input code-like" rows="3" placeholder="用一句话描述策略，例如：20日动量向上、乖离率回落到中性时买入，RSI超过75离场"></textarea>
+            <button class="btn ghost wide" id="ai-gen">生成策略代码</button>
+            <div class="ai-out hidden" id="ai-out"></div>
+          </div>
+
+          <div class="panel bt-note">
+            <div class="panel-head"><div class="panel-title">可回测因子列</div></div>
+            <div class="hint">
+              自定义代码可直接使用：<code>open high low close volume turnover date</code>、
+              <code>ma5 ma10 ma20 ma60</code>、<code>r_&lt;因子id&gt;</code> 原始值、<code>s_&lt;因子id&gt;</code> 评分(-100~100)。
+            </div>
+            <div class="factor-ids" id="factor-ids"></div>
+          </div>
+        </div>
+
+        <div class="bt-right">
+          <div class="metric-row" id="bt-metrics">
+            <div class="empty-state">选择策略后点击「运行回测」，结果会展示在这里</div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">资金曲线 <span class="sub">策略 vs 买入持有</span></div>
+              <span class="sub" id="bt-result-meta"></span>
+            </div>
+            <div class="chart-sm" id="chart-equity"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">回撤曲线 <span class="sub">%</span></div></div>
+            <div class="chart-xs" id="chart-drawdown"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">交易记录 <span class="sub" id="trade-count">--</span></div></div>
+            <div class="table-wrap">
+              <table class="table" id="bt-trades">
+                <thead>
+                  <tr><th>方向</th><th>开仓日</th><th>平仓日</th><th>开仓价</th><th>平仓价</th><th>数量</th><th>持仓</th><th>盈亏</th><th>收益率</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 因子库 ================= -->
+    <section class="view" id="view-library">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">因子库 <span class="sub">每个因子什么意思、什么作用、什么状态，一览</span></div>
+          <div class="seg" id="lib-filter">
+            <button class="chip active" data-cat="all">全部</button>
+          </div>
+        </div>
+        <div class="lib-list" id="lib-list"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 因子详情抽屉 -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div>
+      <div class="d-title"><h3 id="d-name">--</h3><span class="pill" id="d-state">--</span></div>
+      <div class="d-sub" id="d-sub">--</div>
+    </div>
+    <button class="icon-btn" id="d-close">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="d-kpis" id="d-kpis"></div>
+    <section><h4>它是什么意思</h4><p id="d-meaning"></p></section>
+    <section><h4>它起什么作用</h4><p id="d-role"></p></section>
+    <section><h4>怎么算的</h4><code class="formula" id="d-formula"></code></section>
+    <section><h4>五档状态 <span class="sub">当前档位高亮</span></h4><div class="ladder" id="d-levels"></div></section>
+    <section class="ai-section">
+      <div class="ai-head">
+        <h4>AI 深度解读 <span class="ai-badge">大模型 / 本地兜底</span></h4>
+        <button class="btn tiny" id="d-ai-btn">生成解读</button>
+      </div>
+      <div class="ai-text" id="d-ai-text">点击上方按钮，结合当前行情生成该因子的实时解读。</div>
+    </section>
+  </div>
+</aside>
+
+<!-- 设置弹窗 -->
+<div class="modal-mask" id="modal-mask">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>设置</h3>
+      <button class="icon-btn" id="m-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="section-title">行情数据源</div>
+      <select id="set-source" class="input">
+        <option value="auto">自动（QMT → akshare → 模拟）</option>
+        <option value="mock">内置模拟行情（离线演示）</option>
+        <option value="akshare">akshare 免费行情</option>
+        <option value="qmt">佣金宝 QMT 行情</option>
+      </select>
+      <div class="hint" id="set-source-hint">--</div>
+      <div class="row2">
+        <div><label class="mini-label">刷新间隔（秒）</label><input id="set-tick" class="input" type="number" step="0.5" min="0.5" /></div>
+        <div><label class="mini-label">历史K线数量</label><input id="set-bars" class="input" type="number" step="100" min="120" /></div>
+      </div>
+
+      <div class="section-title">大模型（OpenAI 兼容接口）</div>
+      <label class="mini-label">Base URL</label>
+      <input id="set-llm-url" class="input" placeholder="https://api.deepseek.com/v1" />
+      <label class="mini-label">模型名称</label>
+      <input id="set-llm-model" class="input" placeholder="deepseek-chat" />
+      <label class="mini-label">API Key <span class="hint inline" id="set-llm-keyhint"></span></label>
+      <input id="set-llm-key" class="input" type="password" placeholder="留空表示不修改" autocomplete="off" />
+      <div class="hint">支持 DeepSeek / 通义千问 / 智谱 / OpenAI 等任意 OpenAI 兼容服务；不配置时因子解读自动使用本地规则。</div>
+
+      <div class="section-title">佣金宝 QMT（预留）</div>
+      <div class="hint">安装 miniQMT 并登录后，<code>pip install xtquant</code>，数据源选「QMT」即可。下列配置写入本地 config.json，供后续交易接入使用。</div>
+      <label class="mini-label">miniQMT 路径</label>
+      <input id="set-qmt-path" class="input" placeholder="C:\国金QMT交易端\userdata_mini" />
+      <label class="mini-label">资金账号</label>
+      <input id="set-qmt-acc" class="input" placeholder="账户ID（仅记录，不自动下单）" />
+
+      <div class="section-title">自选标的</div>
+      <input id="set-symbols" class="input" placeholder="600519,000001,300750" />
+      <div class="hint">逗号分隔的6位代码；保存后左侧自选列表同步更新。</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" id="m-cancel">取消</button>
+      <button class="btn primary" id="m-save">保存并重载</button>
+    </div>
+  </div>
+</div>
+
+<!-- 使用说明 -->
+<div class="modal-mask" id="help-mask">
+  <div class="modal">
+    <div class="modal-head"><h3>使用说明</h3><button class="icon-btn" id="h-close">✕</button></div>
+    <div class="modal-body help-body">
+      <section>
+        <h4>1. 实时看板</h4>
+        <p>左侧选择标的，右侧展示价格K线与13个因子。每张因子卡显示当前读数、评分、状态档位、近60日走势与历史分位；点击卡片可查看该因子的含义、作用、公式与五档状态说明，并可让大模型结合当前行情做深度解读。</p>
+      </section>
+      <section>
+        <h4>2. 综合评分</h4>
+        <p>只有具备多空方向的因子参与综合评分（Σ评分×权重/Σ权重）。ATR波动率、量比、换手率、振幅只反映风险与活跃度，不参与多空判断。</p>
+      </section>
+      <section>
+        <h4>3. 策略回测</h4>
+        <p>选择模板或让 AI 生成代码，点击运行即可得到资金曲线、夏普、最大回撤、胜率与交易明细。信号按“当日收盘生成、次日开盘成交、双边收费”计算，贴近A股实际。</p>
+      </section>
+      <section>
+        <h4>4. 数据源</h4>
+        <p>默认自动选择：QMT（若已安装登录）→ akshare → 内置模拟。模拟数据用于离线演示与逻辑验证，界面会标注「模拟行情」。QMT 接入点已预留，后续可接实盘交易。</p>
+      </section>
+      <section>
+        <h4>5. Windows 打包</h4>
+        <p>源码目录下运行 <code>build_win.bat</code> 可生成单文件 exe，双击即用，无需安装 Python。Win10/Win11 通用。</p>
+      </section>
+    </div>
+    <div class="modal-foot"><button class="btn primary" id="h-ok">知道了</button></div>
+  </div>
+</div>
+
+<script src="/static/vendor/echarts.min.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
